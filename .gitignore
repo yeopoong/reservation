@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+*.png
+*.html
+body*.txt
+.claude/
+debug/

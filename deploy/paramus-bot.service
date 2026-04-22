@@ -1,0 +1,15 @@
+[Unit]
+Description=Paramus Reservation Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/reservation
+EnvironmentFile=/opt/reservation/.env
+ExecStart=/opt/reservation/.venv/bin/python /opt/reservation/telegram_bot.py
+Restart=always
+RestartSec=5
+User=ubuntu
+
+[Install]
+WantedBy=multi-user.target
