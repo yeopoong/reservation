@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
+from playwright_stealth import stealth_sync
 
 
 FINALIZE_SELECTOR = 'button:has-text("Finalize Reservation")'
@@ -1546,7 +1547,11 @@ def run_booking(
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=use_headless_browser(site_key))
-        page = browser.new_context().new_page()
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
+        stealth_sync(page)
         page.on("dialog", lambda dialog: dialog.accept())
 
         logger(
