@@ -1583,6 +1583,14 @@ def run_booking(
             is_important=True,
         )
 
+        # Handle unexpected redirects to checkout/reservation pages (leftover sessions)
+        current_url = page.url.lower()
+        if "/checkout" in current_url or "/reservation" in current_url:
+            logger(f"[{datetime.datetime.now()}] Detected unexpected checkout page ({current_url}). Redirecting to search...", is_important=True)
+            page.goto(site_config["search_url"])
+            page.wait_for_url("**/search-teetime", timeout=20000)
+            dismiss_search_overlays(page)
+
         target_date = datetime.date.today() + datetime.timedelta(days=target_offset_days)
         offset_text = f"T+{target_offset_days}"
         logger(
