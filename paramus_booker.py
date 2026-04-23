@@ -514,6 +514,28 @@ def click_continue_to_review_if_present(page) -> bool:
 
 def confirm_final_reservation_prompt(page) -> bool:
     """Accept the final Please Confirm modal without dismissing the reservation flow."""
+    has_confirm_prompt = False
+    try:
+        has_confirm_prompt = page.evaluate(
+            """() => {
+                const isVisible = el => {
+                    if (!el) return false;
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    return rect.width > 0 && rect.height > 0
+                        && style.visibility !== 'hidden'
+                        && style.display !== 'none';
+                };
+                return Array.from(document.querySelectorAll(
+                    'mat-dialog-container, [role="dialog"], .cdk-overlay-pane'
+                )).some(el => isVisible(el) && /please\\s+confirm/i.test(el.innerText || el.textContent || ''));
+            }"""
+        )
+    except Exception:
+        has_confirm_prompt = False
+    if not has_confirm_prompt:
+        return True
+
     confirm_labels = [
         "Confirm",
         "Yes",
@@ -1124,10 +1146,12 @@ def select_search_filters(
     page,
     target_players: int,
     target_offset_days: int,
+    site: str = "paramus",
     target_course: str | None = None,
     target_holes: str = "18 Holes",
 ) -> bool:
-    """Apply search filters in a stable order: date, holes, course, then Players."""
+    """Apply search filters without forcing Bergen-only controls on Paramus."""
+    site_key = normalize_site(site)
     target_date = datetime.date.today() + datetime.timedelta(days=target_offset_days)
     page.wait_for_selector("app-search-teetime-filters button.mat-button-toggle-button:visible", timeout=10000)
     dismiss_search_overlays(page)
@@ -1198,11 +1222,13 @@ def select_search_filters(
 
     settle_after_filter_change(page)
 
-    if not apply_holes_filter(page, target_holes):
-        return False
-    if not apply_course_filter(page, target_course):
-        return False
-    if not is_target_date_selected(page, target_date):
+    if site_key == "bergen":
+        if not apply_holes_filter(page, target_holes):
+            return False
+        if not apply_course_filter(page, target_course):
+            return False
+
+    if site_key == "bergen" and not is_target_date_selected(page, target_date):
         dismiss_search_overlays(page)
         before_day = get_selected_day_text(page)
         if not click_target_date(page, target_date, target_offset_days):
@@ -1452,6 +1478,7 @@ def run_booking(
                 page,
                 target_players,
                 target_offset_days,
+                site=site_key,
                 target_course=target_course,
                 target_holes=target_holes,
             ):
@@ -1504,6 +1531,7 @@ def run_booking(
                 page,
                 target_players,
                 target_offset_days,
+                site=site_key,
                 target_course=target_course,
                 target_holes=target_holes,
             ):
@@ -1541,6 +1569,7 @@ def run_booking(
                         page,
                         target_players,
                         target_offset_days,
+                        site=site_key,
                         target_course=target_course,
                         target_holes=target_holes,
                     )
@@ -1638,6 +1667,7 @@ def run_booking(
                             page,
                             target_players,
                             target_offset_days,
+                            site=site_key,
                             target_course=target_course,
                             target_holes=target_holes,
                         )
@@ -1704,6 +1734,7 @@ def run_booking(
                             page,
                             target_players,
                             target_offset_days,
+                            site=site_key,
                             target_course=target_course,
                             target_holes=target_holes,
                         )
@@ -1790,6 +1821,7 @@ def run_booking(
                         page,
                         target_players,
                         target_offset_days,
+                        site=site_key,
                         target_course=target_course,
                         target_holes=target_holes,
                     )
