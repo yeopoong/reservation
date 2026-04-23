@@ -10,20 +10,26 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 
-FINALIZE_SELECTOR = 'button:has-text("Finalize Reservation")'
+FINALIZE_SELECTOR = (
+    'button:has-text("Finalize Reservation"), '
+    'button:has-text("Book Reservation"), '
+    'button:has-text("Confirm Reservation"), '
+    'button:has-text("Complete Reservation"), '
+    'button:has-text("Reserve")'
+)
 DEBUG_DIR = Path(__file__).with_name("debug")
 
-SUPPORTED_SITES = {"paramus"}
+SUPPORTED_SITES = {"bergen"}
 SITE_CONFIG = {
-    "paramus": {
-        "display_name": "Paramus",
-        "search_url": "https://paramus.cps.golf/onlineresweb/search-teetime",
-        "login_url": "https://paramus.cps.golf/onlineresweb/auth/login",
-        "username_env": "PARAMUS_EMAIL",
-        "password_env": "PARAMUS_PASSWORD",
-        "headless_env": "PARAMUS_HEADLESS",
-        "default_course": None,
-    }
+    "bergen": {
+        "display_name": "Bergen",
+        "search_url": "https://bergencountygolf.cps.golf/onlineresweb/search-teetime",
+        "login_url": "https://bergencountygolf.cps.golf/onlineresweb/auth/verify-email",
+        "username_env": "BERGEN_USERNAME",
+        "password_env": "BERGEN_PASSWORD",
+        "headless_env": "BERGEN_HEADLESS",
+        "default_course": "Overpeck 18",
+    },
 }
 
 
@@ -52,7 +58,7 @@ def is_valid_time(time_text: str, am_pm: str, start_str: str, end_str: str) -> b
 
 
 def normalize_site(site: str) -> str:
-    site_key = (site or "paramus").strip().lower()
+    site_key = (site or "bergen").strip().lower()
     if site_key not in SUPPORTED_SITES:
         raise RuntimeError(f"Unsupported site '{site}'. Choose from: {', '.join(sorted(SUPPORTED_SITES))}.")
     return site_key
@@ -310,15 +316,27 @@ def wait_for_checkout_ready(page, expected_guests: int, timeout_ms: int = 15000)
                 ].some(isVisible);
                 if (spinnerVisible) return false;
 
-                const guestCount = Array.from(document.querySelectorAll('input[type="checkbox"]')).filter(input => {{
-                    const scope = input.closest('mat-checkbox, label, div, li, tr') || input.parentElement;
-                    return /\\bGuest\\b/i.test(scope?.innerText || scope?.textContent || '');
-                }}).length;
+                const hasGuestText = input => {{
+                    const candidates = [];
+                    if (input.id) {{
+                        const label = document.querySelector(`label[for="${{CSS.escape(input.id)}}"]`);
+                        if (label) candidates.push(label);
+                    }}
+                    let node = input;
+                    for (let i = 0; node && i < 8; i++) {{
+                        candidates.push(node);
+                        node = node.parentElement;
+                    }}
+                    const mat = input.closest('mat-checkbox');
+                    if (mat) candidates.push(mat);
+                    return candidates.some(el => /\\bGuest\\b/i.test(el.innerText || el.textContent || ''));
+                }};
+                const guestCount = Array.from(document.querySelectorAll('input[type="checkbox"]')).filter(hasGuestText).length;
                 const continueButton = Array.from(document.querySelectorAll('button')).some(
                     btn => isVisible(btn) && /Continue/i.test(btn.innerText || btn.textContent || '')
                 );
                 const finalize = Array.from(document.querySelectorAll('button')).some(
-                    btn => isVisible(btn) && /Finalize Reservation/i.test(btn.innerText || btn.textContent || '')
+                    btn => isVisible(btn) && /(Finalize|Book|Confirm|Complete|Reserve)/i.test(btn.innerText || btn.textContent || '')
                 );
                 return guestCount >= {expected_guests} || continueButton || finalize;
             }}""",
@@ -342,10 +360,24 @@ def count_guest_checkboxes(page) -> int:
                         && style.visibility !== 'hidden'
                         && style.display !== 'none';
                 };
+                const hasGuestText = input => {
+                    const candidates = [];
+                    if (input.id && window.CSS?.escape) {
+                        const label = document.querySelector(`label[for="${CSS.escape(input.id)}"]`);
+                        if (label) candidates.push(label);
+                    }
+                    let node = input;
+                    for (let i = 0; node && i < 8; i++) {
+                        candidates.push(node);
+                        node = node.parentElement;
+                    }
+                    const mat = input.closest('mat-checkbox');
+                    if (mat) candidates.push(mat);
+                    return candidates.some(el => /\\bGuest\\b/i.test(el.innerText || el.textContent || ''));
+                };
                 return Array.from(document.querySelectorAll('input[type="checkbox"]')).filter(input => {
                     const scope = input.closest('mat-checkbox, label, div, li, tr') || input.parentElement;
-                    return (isVisible(input) || isVisible(scope))
-                        && /\\bGuest\\b/i.test(scope?.innerText || scope?.textContent || '');
+                    return (isVisible(input) || isVisible(scope)) && hasGuestText(input);
                 }).length;
             }"""
         )
@@ -366,10 +398,24 @@ def count_checked_guest_checkboxes(page) -> int:
                         && style.visibility !== 'hidden'
                         && style.display !== 'none';
                 };
+                const hasGuestText = input => {
+                    const candidates = [];
+                    if (input.id && window.CSS?.escape) {
+                        const label = document.querySelector(`label[for="${CSS.escape(input.id)}"]`);
+                        if (label) candidates.push(label);
+                    }
+                    let node = input;
+                    for (let i = 0; node && i < 8; i++) {
+                        candidates.push(node);
+                        node = node.parentElement;
+                    }
+                    const mat = input.closest('mat-checkbox');
+                    if (mat) candidates.push(mat);
+                    return candidates.some(el => /\\bGuest\\b/i.test(el.innerText || el.textContent || ''));
+                };
                 return Array.from(document.querySelectorAll('input[type="checkbox"]')).filter(input => {
                     const scope = input.closest('mat-checkbox, label, div, li, tr') || input.parentElement;
-                    return (isVisible(input) || isVisible(scope)) && input.checked
-                        && /\\bGuest\\b/i.test(scope?.innerText || scope?.textContent || '');
+                    return (isVisible(input) || isVisible(scope)) && input.checked && hasGuestText(input);
                 }).length;
             }"""
         )
@@ -389,19 +435,112 @@ def click_unchecked_guest_checkboxes(page):
                     && style.visibility !== 'hidden'
                     && style.display !== 'none';
             };
+            const hasGuestText = input => {
+                const candidates = [];
+                if (input.id && window.CSS?.escape) {
+                    const label = document.querySelector(`label[for="${CSS.escape(input.id)}"]`);
+                    if (label) candidates.push(label);
+                }
+                let node = input;
+                for (let i = 0; node && i < 8; i++) {
+                    candidates.push(node);
+                    node = node.parentElement;
+                }
+                const mat = input.closest('mat-checkbox');
+                if (mat) candidates.push(mat);
+                return candidates.some(el => /\\bGuest\\b/i.test(el.innerText || el.textContent || ''));
+            };
             for (const input of Array.from(document.querySelectorAll('input[type="checkbox"]'))) {
                 const scope = input.closest('mat-checkbox, label, div, li, tr') || input.parentElement;
                 if (!(isVisible(input) || isVisible(scope)) || input.checked) continue;
-                if (!/\\bGuest\\b/i.test(scope?.innerText || scope?.textContent || '')) continue;
+                if (!hasGuestText(input)) continue;
 
                 const clickable = input.closest('mat-checkbox')?.querySelector('label')
                     || input.closest('label')
+                    || (input.id && window.CSS?.escape ? document.querySelector(`label[for="${CSS.escape(input.id)}"]`) : null)
                     || scope.querySelector('label')
                     || input;
                 clickable.click();
             }
         }"""
     )
+
+
+def checkout_matches_target_course(page, target_course: str | None) -> bool:
+    """Return True when checkout/review page text contains the requested course."""
+    if not target_course:
+        return True
+    try:
+        return page.evaluate(
+            """(targetCourse) => {
+                const text = (document.body?.innerText || document.body?.textContent || '')
+                    .replace(/\\s+/g, ' ')
+                    .toLowerCase();
+                return text.includes(String(targetCourse).toLowerCase());
+            }""",
+            target_course,
+        )
+    except Exception:
+        return False
+
+
+def wait_for_review_or_final_action(page, timeout_ms: int = 15000) -> bool:
+    """Wait after Continue until the review/confirm screen is stable."""
+    try:
+        page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 5000))
+    except Exception:
+        pass
+
+    try:
+        page.wait_for_function(
+            """() => {
+                const isVisible = el => {
+                    if (!el) return false;
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    return rect.width > 0 && rect.height > 0
+                        && style.visibility !== 'hidden'
+                        && style.display !== 'none';
+                };
+                const spinnerVisible = [
+                    ...Array.from(document.querySelectorAll('ngx-spinner')),
+                    ...Array.from(document.querySelectorAll('.ngx-spinner-overlay')),
+                    ...Array.from(document.querySelectorAll('.mat-progress-spinner')),
+                    ...Array.from(document.querySelectorAll('.mat-spinner')),
+                ].some(isVisible);
+                if (spinnerVisible) return false;
+
+                return Array.from(document.querySelectorAll('button')).some(btn =>
+                    isVisible(btn) && /(Finalize Reservation|Book Reservation|Confirm Reservation|Complete Reservation|Reserve)/i
+                        .test(btn.innerText || btn.textContent || '')
+                ) || /Review\\s*&\\s*Confirm|Please\\s+confirm/i.test(document.body?.innerText || '');
+            }""",
+            timeout=timeout_ms,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def tee_time_card_matches_target_course(raw_text: str, target_course: str | None) -> bool:
+    """Skip visible Bergen tee-time cards that clearly belong to another course."""
+    if not target_course:
+        return True
+    raw_lower = (raw_text or "").lower()
+    target_lower = target_course.lower()
+    if target_lower in raw_lower:
+        return True
+
+    known_courses = [
+        "darlington",
+        "overpeck",
+        "rockleigh",
+        "soldier hill",
+        "valley brook",
+        "valle brook",
+        "valley",
+    ]
+    return not any(course in raw_lower for course in known_courses)
 
 
 def settle_after_filter_change(page, timeout_ms: int = 7000):
@@ -1078,6 +1217,7 @@ def select_mat_option(page, filter_control_selector: str, target_text: str, mult
             deselect_all = page.locator(".cdk-overlay-container mat-option:visible", has_text="Deselect All").first
             if deselect_all.count() > 0:
                 deselect_all.click(force=True, timeout=2000)
+                page.wait_for_timeout(300)
             else:
                 page.evaluate(
                     """() => {
@@ -1101,6 +1241,30 @@ def select_mat_option(page, filter_control_selector: str, target_text: str, mult
                         }
                     }"""
                 )
+            page.wait_for_timeout(200)
+            page.evaluate(
+                """() => {
+                    const isVisible = el => {
+                        if (!el) return false;
+                        const rect = el.getBoundingClientRect();
+                        const style = window.getComputedStyle(el);
+                        return rect.width > 0 && rect.height > 0
+                            && style.visibility !== 'hidden'
+                            && style.display !== 'none';
+                    };
+                    const options = Array.from(document.querySelectorAll('.cdk-overlay-container mat-option'))
+                        .filter(isVisible);
+                    for (const option of options) {
+                        const text = (option.innerText || option.textContent || '').replace(/\\s+/g, ' ').trim();
+                        const isSelected = option.classList.contains('mat-selected')
+                            || option.getAttribute('aria-selected') === 'true'
+                            || option.querySelector('.mat-pseudo-checkbox-checked');
+                        if (isSelected && !/select all|deselect all/i.test(text)) {
+                            option.click();
+                        }
+                    }
+                }"""
+            )
             page.wait_for_timeout(200)
 
         page.wait_for_selector(f'.cdk-overlay-container mat-option:has-text("{target_text}"):visible', timeout=3000)
@@ -1139,6 +1303,9 @@ def select_mat_option(page, filter_control_selector: str, target_text: str, mult
 
         page.wait_for_timeout(700)
         dismiss_search_overlays(page)
+        if multiple:
+            selected_value = get_filter_select_value(page, filter_control_selector) or ""
+            return target_text.lower() in selected_value.lower() and "multiple" not in selected_value.lower()
         return True
     except Exception:
         try:
@@ -1510,7 +1677,7 @@ def run_booking(
             return True
         return False
 
-    site_key = "paramus"
+    site_key = "bergen"
     site_config = get_site_config(site_key)
     target_course = resolve_default_course(site_key, target_course)
 
@@ -1731,6 +1898,12 @@ def run_booking(
                         time_text = info["t"]
                         if not time_text:
                             continue
+                        if not tee_time_card_matches_target_course(info["raw"], target_course):
+                            logger(
+                                f"[{datetime.datetime.now()}] Skipping tee time from non-target course. "
+                                f"Target={target_course}, card='{re.sub(r'\\s+', ' ', info['raw']).strip()[:120]}'"
+                            )
+                            continue
 
                         am_pm_compact = re.sub(r"\s+", "", info["raw"][:20]).upper()
                         am_pm = "A" if "AM" in am_pm_compact else "P"
@@ -1763,6 +1936,32 @@ def run_booking(
                 checkout_ready = wait_for_checkout_ready(page, expected_guests)
                 if not interruptible_sleep(0.3, stop_event):
                     break
+
+                if target_course and not checkout_matches_target_course(page, target_course):
+                    snapshot = get_results_debug_snapshot(page)
+                    logger(
+                        f"[{datetime.datetime.now()}] Checkout course does not match target course "
+                        f"'{target_course}'. Skipping this tee time. "
+                        f"timeKey={target_time_key} {format_debug_snapshot(snapshot)}",
+                        is_important=True,
+                    )
+                    save_debug_artifacts(page, f"{site_key}_checkout_course_mismatch", logger)
+                    if target_time_key:
+                        skipped_times.add(target_time_key)
+                    try:
+                        page.goto(site_config["search_url"])
+                        page.wait_for_url("**/search-teetime", timeout=30000)
+                        select_search_filters(
+                            page,
+                            target_players,
+                            target_offset_days,
+                            site=site_key,
+                            target_course=target_course,
+                            target_holes=target_holes,
+                        )
+                    except Exception as nav_err:
+                        logger(f"[{datetime.datetime.now()}] Navigation back failed: {nav_err}")
+                    continue
 
                 actual_guests = count_guest_checkboxes(page)
                 logger(
@@ -1853,9 +2052,7 @@ def run_booking(
 
                 if site_key == "bergen" and click_continue_to_review_if_present(page):
                     logger(f"[{datetime.datetime.now()}] Continue clicked. Waiting for review/confirm step...", is_important=True)
-                    try:
-                        page.wait_for_selector(FINALIZE_SELECTOR, timeout=8000)
-                    except Exception:
+                    if not wait_for_review_or_final_action(page):
                         snapshot = get_results_debug_snapshot(page)
                         logger(
                             f"[{datetime.datetime.now()}] Review/confirm step did not show finalize button. "
@@ -1871,6 +2068,19 @@ def run_booking(
                                 is_important=True,
                             )
                             interruptible_sleep(hold_seconds, stop_event)
+                            break
+                        page.keyboard.press("Escape")
+                        continue
+                    if target_course and not checkout_matches_target_course(page, target_course):
+                        snapshot = get_results_debug_snapshot(page)
+                        logger(
+                            f"[{datetime.datetime.now()}] Review course does not match target course "
+                            f"'{target_course}'. {format_debug_snapshot(snapshot)}",
+                            is_important=True,
+                        )
+                        save_debug_artifacts(page, f"{site_key}_review_course_mismatch", logger)
+                        if dry_run:
+                            interruptible_sleep(get_dry_run_hold_seconds(), stop_event)
                             break
                         page.keyboard.press("Escape")
                         continue
@@ -1900,7 +2110,7 @@ def run_booking(
                 if dry_run:
                     hold_seconds = get_dry_run_hold_seconds()
                     logger(
-                        f"[{datetime.datetime.now()}] DRY RUN: 'Finalize Reservation' is visible. "
+                        f"[{datetime.datetime.now()}] DRY RUN: Review/confirm screen reached. "
                         f"Skipping final click and holding for {hold_seconds}s.",
                         is_important=True,
                     )
@@ -1908,8 +2118,8 @@ def run_booking(
                     break
                 else:
                     try:
-                        # Finalize using the Playwright locator for reliability.
-                        page.locator('button:has-text("Finalize Reservation")').click(timeout=5000)
+                        # Finalize using the site-specific selector for reliability.
+                        page.locator(FINALIZE_SELECTOR).first.click(timeout=5000)
                         if confirm_final_reservation_prompt(page):
                             logger(f"[{datetime.datetime.now()}] Final confirmation accepted.", is_important=True)
                         else:
@@ -1926,13 +2136,16 @@ def run_booking(
                     except Exception as e:
                         snapshot = get_results_debug_snapshot(page)
                         logger(
-                            f"[{datetime.datetime.now()}] Could not click finalize button: {e}. "
+                            f"[{datetime.datetime.now()}] Reached review/confirm screen but could not click final button: {e}. "
                             f"{format_debug_snapshot(snapshot)}",
                             is_important=True,
                         )
                         save_debug_artifacts(page, f"{site_key}_finalize_click_failed", logger)
-                        dismiss_search_overlays(page)
-                        continue
+                        logger(
+                            f"[{datetime.datetime.now()}] Stopping instead of returning to search to avoid duplicate attempts.",
+                            is_important=True,
+                        )
+                        break
 
             except Exception as e:
                 snapshot = get_results_debug_snapshot(page)
@@ -1964,7 +2177,7 @@ def run_booking(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CPS Golf Booking Bot")
-    parser.add_argument("--site", type=str, default="paramus", choices=sorted(SUPPORTED_SITES), help="Target golf site")
+    parser.add_argument("--site", type=str, default="bergen", choices=sorted(SUPPORTED_SITES), help="Target golf site")
     parser.add_argument("--dry-run", action="store_true", help="Skip final booking click")
     parser.add_argument("--force-run", action="store_true", help="Run immediately without waiting for 7 AM")
     parser.add_argument("--course", type=str, default=None, help="Course label to select")

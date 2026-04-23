@@ -9,7 +9,8 @@ import telebot
 from cryptography.fernet import Fernet, InvalidToken
 from dotenv import load_dotenv
 
-from paramus_booker import resolve_default_course, run_booking
+from bergen_booker import run_booking as run_bergen_booking
+from paramus_booker import run_booking as run_paramus_booking
 
 
 load_dotenv()
@@ -167,7 +168,8 @@ def run_booking_async(
             print(f"Failed to send telegram msg: {e}")
 
     try:
-        run_booking(
+        booking_runner = run_bergen_booking if site == "bergen" else run_paramus_booking
+        booking_runner(
             dry_run=dry_run,
             force_run=force_run,
             log_callback=send_log,
@@ -200,10 +202,13 @@ def send_welcome(message):
         "Set login/password for one site only\n\n"
         "/book [site] [course] [offset] [start_time] [end_time] [players]\n"
         "Example: `/book bergen 2 11:30 15:00 4`\n"
-        "Start a real booking attempt\n\n"
+        "Start a real booking attempt at the normal 7 AM schedule\n\n"
+        "/run [site] [course] [offset] [start_time] [end_time] [players]\n"
+        "Example: `/run paramus 2 14:00 17:00 2`\n"
+        "Start a real booking attempt immediately\n\n"
         "/test [site] [course] [offset] [start_time] [end_time] [players]\n"
-        "Example: `/test paramus 1 14:00 17:00 4`\n"
-        "Run in dry-run mode without final confirmation\n\n"
+        "Example: `/test paramus 2 14:00 17:00 2`\n"
+        "Dry-run only. It will not click final confirmation or reserve the tee time\n\n"
         "Notes\n"
         "- Default `site` is `paramus`\n"
         "- `site` is optional if you already used `/site`\n"
@@ -290,7 +295,7 @@ def handle_pending_creds(message):
 
 
 def get_args_from_message(message):
-    args = message.text.split()
+    args = [part.strip().rstrip(",") for part in message.text.split()]
     site = user_sites.get(message.chat.id, "paramus")
     arg_index = 1
     if len(args) > 1 and args[1].lower() in {"paramus", "bergen"}:
@@ -364,7 +369,8 @@ def _start_booking_thread(message, dry_run: bool, force_run: bool):
         bot.reply_to(message, f"Invalid option format. Example: {example}")
         return
 
-    course = resolve_default_course(site, course)
+    if site == "bergen" and not course:
+        course = "Overpeck 18"
 
     email, password = _resolve_credentials(message, site)
     if not email:
@@ -375,12 +381,15 @@ def _start_booking_thread(message, dry_run: bool, force_run: bool):
         return
 
     booking_stop_event = threading.Event()
-    mode_text = "Starting dry-run mode." if dry_run else "Starting booking run."
-    finalize_text = (
-        "Final confirmation will be skipped."
-        if dry_run
-        else "Important progress updates will be sent here."
-    )
+    if dry_run:
+        mode_text = "Starting dry-run mode."
+        finalize_text = "Dry-run only: final confirmation will be skipped, so no reservation will be made."
+    elif force_run:
+        mode_text = "Starting immediate booking run."
+        finalize_text = "This is a real booking attempt and will run immediately."
+    else:
+        mode_text = "Starting booking run."
+        finalize_text = "This is a real booking attempt and will wait for the normal 7 AM schedule."
     bot.reply_to(
         message,
         f"{mode_text}\n"
@@ -421,6 +430,14 @@ def cmd_book(message):
         _start_booking_thread(message, dry_run=False, force_run=False)
     except Exception as exc:
         reply_handler_error(message, "/book", exc)
+
+
+@bot.message_handler(commands=["run"])
+def cmd_run(message):
+    try:
+        _start_booking_thread(message, dry_run=False, force_run=True)
+    except Exception as exc:
+        reply_handler_error(message, "/run", exc)
 
 
 @bot.message_handler(commands=["test"])
