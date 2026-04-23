@@ -6,3 +6,4 @@ __pycache__/
 body*.txt
 .claude/
 debug/
+telegram_credentials.enc
