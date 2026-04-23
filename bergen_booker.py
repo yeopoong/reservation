@@ -1899,9 +1899,10 @@ def run_booking(
                         if not time_text:
                             continue
                         if not tee_time_card_matches_target_course(info["raw"], target_course):
+                            clean_card = re.sub(r'\s+', ' ', info['raw']).strip()[:120]
                             logger(
                                 f"[{datetime.datetime.now()}] Skipping tee time from non-target course. "
-                                f"Target={target_course}, card='{re.sub(r'\\s+', ' ', info['raw']).strip()[:120]}'"
+                                f"Target={target_course}, card='{clean_card}'"
                             )
                             continue
 
